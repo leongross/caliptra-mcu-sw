@@ -156,7 +156,7 @@ pub const ROM_VARIANTS: &[RomVariant] = &[
     // === emulator ===
     RomVariant::new(None, None),
     RomVariant::new(None, Some("hw-2-1")),
-    // ROM_ONLY_TEST_FEATURES — kept in sync with builder/src/all.rs.
+    // ROM_ONLY_TEST_FEATURES — kept in sync with builder/src/all/mod.rs.
     RomVariant::new(None, Some("test-i3c-services")),
     RomVariant::new(None, Some("test-fw-manifest-dot")),
     RomVariant::new(None, Some("test-fw-manifest-dot-hitless")),

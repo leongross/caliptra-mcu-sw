@@ -231,10 +231,10 @@ impl<'a> ActionHandler<'a> for Subsystem {
             "all-fw.zip".to_string()
         };
         let args = AllBuildArgs {
-            output: Some(&output_name),
-            platform: Some("fpga"),
-            rom_features: args.rom_features.as_deref(),
-            runtime_features: args.runtime_features.as_deref(),
+            output: Some(output_name.clone()),
+            platform: Some("fpga".to_string()),
+            rom_features: args.rom_features.clone(),
+            runtime_features: args.runtime_features.clone(),
             mcu_cfgs,
             separate_runtimes: args.separate_runtimes,
             shard_index: args.shard_index,
