@@ -28,6 +28,7 @@ mod precheckin;
 mod registers;
 mod rom;
 mod runtime;
+mod size_history;
 mod sizes;
 mod test;
 #[cfg(feature = "cherry-picker")]
@@ -437,6 +438,8 @@ enum Commands {
         #[command(subcommand)]
         cmd: BundleCommands,
     },
+    /// Track firmware binary sizes across git history
+    SizeHistory,
     /// Network stack development tools (TAP, DHCP/TFTP server, lwip-rs)
     Network {
         #[command(subcommand)]
@@ -914,6 +917,7 @@ fn main() {
             }
         },
         Commands::FirmwareBundler { cmd } => caliptra_mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::SizeHistory => size_history::run().map_err(|e| anyhow::anyhow!("{}", e)),
         Commands::Network { cmd } => network::run(cmd.clone()),
         Commands::CI { command } => match command {
             CICommands::SizeHistory => ci::size_history(),
