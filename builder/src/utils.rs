@@ -4,8 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 
+use crate::Platform;
 use caliptra_mcu_firmware_bundler::utils::find_workspace_directory;
 
 /// Write `contents` to `path` only if the file is missing or differs.
@@ -40,7 +41,7 @@ const FPGA_EXAMPLE_APP_MANIFEST: &str = "firmware-bundler/reference/fpga/example
 const EMU_BARE_METAL_MANIFEST: &str = "firmware-bundler/reference/emulator/bare-metal.toml";
 const FPGA_BARE_METAL_MANIFEST: &str = "firmware-bundler/reference/fpga/bare-metal.toml";
 
-pub fn manifest_file(platform: Option<&str>, example_app: bool) -> Result<PathBuf> {
+pub fn manifest_file(platform: Platform, example_app: bool) -> Result<PathBuf> {
     manifest_file_for_profile(platform, example_app, None)
 }
 
@@ -51,19 +52,19 @@ pub fn manifest_file(platform: Option<&str>, example_app: bool) -> Result<PathBu
 /// layout.  This matches `xtask`'s default-profile semantics: `runtime-build`
 /// uses `devel` unless the caller explicitly opts into `--profile release`.
 pub fn manifest_file_for_profile(
-    platform: Option<&str>,
+    platform: Platform,
     example_app: bool,
     profile: Option<&str>,
 ) -> Result<PathBuf> {
     let release = matches!(profile, Some("release"));
     let manifest = match platform {
-        Some("emulator") | None => match (example_app, release) {
+        Platform::Emulator => match (example_app, release) {
             (true, true) => EMU_EXAMPLE_APP_MANIFEST,
             (true, false) => EMU_EXAMPLE_APP_MANIFEST_DEVEL,
             (false, true) => EMU_USER_APP_MANIFEST,
             (false, false) => EMU_USER_APP_MANIFEST_DEVEL,
         },
-        Some("fpga") => {
+        Platform::Fpga => {
             // FPGA SRAM is hardware-constrained; no `*-devel.toml` variant.
             if example_app {
                 FPGA_EXAMPLE_APP_MANIFEST
@@ -71,17 +72,15 @@ pub fn manifest_file_for_profile(
                 FPGA_USER_APP_MANIFEST
             }
         }
-        _ => bail!("Invalid platform {platform:?}, supported options are 'emulator' or 'fpga'"),
     };
 
     find_workspace_directory().map(|w| w.join(manifest))
 }
 
-pub fn bare_metal_manifest_file(platform: Option<&str>) -> Result<PathBuf> {
+pub fn bare_metal_manifest_file(platform: Platform) -> Result<PathBuf> {
     let manifest = match platform {
-        Some("emulator") | None => EMU_BARE_METAL_MANIFEST,
-        Some("fpga") => FPGA_BARE_METAL_MANIFEST,
-        _ => bail!("Invalid platform {platform:?}, supported options are 'emulator' or 'fpga'"),
+        Platform::Emulator => EMU_BARE_METAL_MANIFEST,
+        Platform::Fpga => FPGA_BARE_METAL_MANIFEST,
     };
 
     find_workspace_directory().map(|w| w.join(manifest))
@@ -97,8 +96,8 @@ mod tests {
         for example_app in [false, true] {
             for profile in [None, Some("devel"), Some("release")] {
                 let path = match profile {
-                    None => manifest_file(Some("emulator"), example_app),
-                    Some(_) => manifest_file_for_profile(Some("emulator"), example_app, profile),
+                    None => manifest_file(Platform::Emulator, example_app),
+                    Some(_) => manifest_file_for_profile(Platform::Emulator, example_app, profile),
                 }
                 .unwrap();
                 let manifest: toml::Value =

@@ -6,12 +6,12 @@
 //! the configuration and state needed throughout the build process.
 
 use super::soc_images::{default_hitless_attestation_mcu_cfg, hitless_attestation_update_feature};
-use crate::ImageCfg;
+use crate::{ImageCfg, Platform};
 
 #[derive(Default)]
 pub struct AllBuildArgs {
     pub output: Option<String>,
-    pub platform: Option<String>,
+    pub platform: Platform,
     pub rom_features: Option<String>,
     /// Network ROM variants to build (comma-separated).
     pub network_rom_features: Option<String>,
@@ -42,9 +42,7 @@ pub struct AllBuildArgs {
 /// the firmware build process, avoiding the need to thread parameters
 /// through multiple function calls.
 pub struct AllBuildContext {
-    pub platform: String,
-    /// Whether building for FPGA (vs emulator).
-    pub fpga: bool,
+    pub platform: Platform,
     /// Feature flags for ROM build.
     pub rom_features: String,
     /// Network ROM variants to build (comma-separated).
@@ -94,8 +92,7 @@ impl AllBuildContext {
     ///
     /// - `AllBuildContext`: Initialized build context.
     pub fn new(args: AllBuildArgs) -> Self {
-        let platform = args.platform.unwrap_or_else(|| "emulator".to_string());
-        let fpga = platform == "fpga";
+        let platform = args.platform;
         let rom_features = args.rom_features.unwrap_or_default();
         let total_shards = args.total_shards.max(1);
 
@@ -111,7 +108,7 @@ impl AllBuildContext {
                 if args.separate_runtimes {
                     let features = if is_release {
                         crate::features::RELEASE_RUNTIME_TEST_FEATURES
-                    } else if fpga {
+                    } else if platform == Platform::Fpga {
                         crate::features::FPGA_RUNTIME_TEST_FEATURES
                     } else {
                         crate::features::EMULATOR_RUNTIME_TEST_FEATURES
@@ -154,7 +151,6 @@ impl AllBuildContext {
 
         Self {
             platform,
-            fpga,
             rom_features,
             network_rom_features: args.network_rom_features,
             soc_images: args.soc_images,

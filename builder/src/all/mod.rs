@@ -51,7 +51,7 @@ use test_roms::{build_all_test_roms, build_feature_roms, build_network_roms};
 /// 7. Package everything into a ZIP archive
 pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let ctx = AllBuildContext::new(args);
-    let mut test_roms = build_all_test_roms(&ctx.platform)?;
+    let mut test_roms = build_all_test_roms(ctx.platform)?;
     let base = BaseArtifacts::build(&ctx)?;
 
     // Include both runtime features (which may have matching ROM features) and
@@ -63,7 +63,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         .chain(crate::features::ROM_ONLY_TEST_FEATURES.iter().copied())
         .collect();
 
-    let feature_roms = build_feature_roms(&ctx.platform, &rom_features_to_build)?;
+    let feature_roms = build_feature_roms(ctx.platform, &rom_features_to_build)?;
     test_roms.extend(feature_roms);
 
     let feature_resources = build_feature_resources(&ctx, &base)?;
@@ -103,35 +103,34 @@ fn default_bundle_name(ctx: &AllBuildContext) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Platform;
 
     #[test]
     fn test_all_build_args_default() {
         let args = AllBuildArgs::default();
         assert!(args.output.is_none());
-        assert!(args.platform.is_none());
+        assert_eq!(args.platform, Platform::Emulator);
         assert!(!args.separate_runtimes);
     }
 
     #[test]
     fn test_context_creation() {
         let args = AllBuildArgs {
-            platform: Some("emulator".to_string()),
+            platform: Platform::Emulator,
             separate_runtimes: false,
             ..Default::default()
         };
         let ctx = AllBuildContext::new(args);
-        assert_eq!(ctx.platform, "emulator");
-        assert!(!ctx.fpga);
+        assert_eq!(ctx.platform, Platform::Emulator);
     }
 
     #[test]
     fn test_context_fpga() {
         let args = AllBuildArgs {
-            platform: Some("fpga".to_string()),
+            platform: Platform::Fpga,
             ..Default::default()
         };
         let ctx = AllBuildContext::new(args);
-        assert_eq!(ctx.platform, "fpga");
-        assert!(ctx.fpga);
+        assert_eq!(ctx.platform, Platform::Fpga);
     }
 }

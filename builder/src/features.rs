@@ -1,5 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+use crate::Platform;
+
 pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "active-i3c1",
     "test-i3c-simple",
@@ -124,21 +126,21 @@ pub const BARE_METAL_BINARIES: &[&str] = &[
 /// audit), and any other per-variant build check.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct RomVariant {
-    /// Platform name passed to `--platform`. `None` defaults to `"emulator"`.
-    pub platform: Option<&'static str>,
+    /// Platform passed to `--platform`. `None` defaults to the emulator.
+    pub platform: Option<Platform>,
     /// Feature list passed to `--features`. `None` builds with no extra
     /// features (the crate's default feature set).
     pub features: Option<&'static str>,
 }
 
 impl RomVariant {
-    pub const fn new(platform: Option<&'static str>, features: Option<&'static str>) -> Self {
+    pub const fn new(platform: Option<Platform>, features: Option<&'static str>) -> Self {
         Self { platform, features }
     }
 
     /// Pretty display name suitable for tables, logs, and error messages.
     pub fn display(&self) -> String {
-        let platform = self.platform.unwrap_or("emulator");
+        let platform = self.platform.unwrap_or_default();
         match self.features {
             Some(f) if !f.is_empty() => format!("{platform} [{f}]"),
             _ => format!("{platform} (default)"),
@@ -170,10 +172,10 @@ pub const ROM_VARIANTS: &[RomVariant] = &[
     RomVariant::new(None, Some("test-network-boot")),
     RomVariant::new(None, Some("test-flash-network-fallback")),
     // === fpga ===
-    RomVariant::new(Some("fpga"), None),
-    RomVariant::new(Some("fpga"), Some("hw-2-1")),
-    RomVariant::new(Some("fpga"), Some("hw-2-1,test-rom-hooks")),
-    RomVariant::new(Some("fpga"), Some("hw-2-1,test-stash-rom-digest")),
+    RomVariant::new(Some(Platform::Fpga), None),
+    RomVariant::new(Some(Platform::Fpga), Some("hw-2-1")),
+    RomVariant::new(Some(Platform::Fpga), Some("hw-2-1,test-rom-hooks")),
+    RomVariant::new(Some(Platform::Fpga), Some("hw-2-1,test-stash-rom-digest")),
 ];
 
 /// Parse a `--variants` CLI value into a list of [`RomVariant`].
@@ -204,9 +206,9 @@ pub fn parse_variants(s: &str) -> Result<Vec<RomVariant>, String> {
             Some((p, f)) => (p, f),
             None => (item, ""),
         };
-        let platform: Option<&'static str> = match platform_raw.trim() {
+        let platform: Option<Platform> = match platform_raw.trim() {
             "" | "emulator" => None,
-            other => Some(other.to_string().leak()),
+            other => Some(other.parse::<Platform>().map_err(|e| e.to_string())?),
         };
         let features_normalized = features_raw.trim().replace('+', ",");
         let features: Option<&'static str> = if features_normalized.is_empty() {

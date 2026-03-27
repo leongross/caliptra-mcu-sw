@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use caliptra_builder::{elf_size, FirmwareType, FwId};
+use caliptra_mcu_builder::Platform;
 use elf::endian::LittleEndian;
 use size_history::{
     ArtifactBuilder, Cache, FsCache, GitHubStepSummary, GithubActionCache, HtmlTableReport,
@@ -123,7 +124,7 @@ fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
     // release-only `cfg`s are caught.
     let result =
         caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
-            platform: Some("fpga"),
+            platform: Platform::Fpga,
             features: Some("release"),
             profile: Some("release"),
             target_dir: Some(target_dir.to_path_buf()),
@@ -136,7 +137,7 @@ fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
 
 fn build_rom(target_dir: &Path) -> Result<PathBuf> {
     caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
-        platform: Some("fpga"),
+        platform: Platform::Fpga,
         target_dir: Some(target_dir.to_path_buf()),
         ..Default::default()
     })

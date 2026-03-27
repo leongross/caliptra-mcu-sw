@@ -4,8 +4,8 @@
 //! the ROM, firwmare, and SoC manifest.
 
 use crate::offline_signing::{create_signing_request, SigningRequestJson};
-use crate::target_dir;
 use crate::utils::write_if_changed;
+use crate::{target_dir, Platform};
 use anyhow::{bail, Context, Result};
 use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
@@ -120,7 +120,7 @@ pub struct AuthManifestPubKeysPaths<'a> {
 
 #[derive(Clone)]
 pub struct CaliptraBuilder {
-    fpga: bool,
+    platform: Platform,
     ocp_lock: bool,
     caliptra_rom: Option<PathBuf>,
     caliptra_firmware: Option<PathBuf>,
@@ -155,7 +155,7 @@ impl CaliptraBuilder {
     #[allow(clippy::too_many_arguments)]
     pub fn new(args: &crate::CaliptraBuildArgs) -> Self {
         Self {
-            fpga: args.fpga,
+            platform: args.platform,
             ocp_lock: args.ocp_lock,
             caliptra_rom: args.caliptra_rom.clone(),
             caliptra_firmware: args.caliptra_firmware.clone(),
@@ -248,7 +248,7 @@ impl CaliptraBuilder {
             }
             Ok(caliptra_rom.clone())
         } else {
-            Self::compile_caliptra_rom_cached(self.fpga)
+            Self::compile_caliptra_rom_cached(self.platform == Platform::Fpga)
         }
     }
 
@@ -261,7 +261,7 @@ impl CaliptraBuilder {
             caliptra_firmware.clone()
         } else {
             let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached(
-                self.fpga,
+                self.platform == Platform::Fpga,
                 self.ocp_lock,
                 self.svn,
                 self.pqc_key_type,
@@ -283,7 +283,7 @@ impl CaliptraBuilder {
                 &existing_bundle,
                 owner_config,
                 self.pqc_key_type,
-                self.fpga,
+                self.platform == Platform::Fpga,
             )?;
 
             // Write the re-signed bundle to a new path
@@ -717,7 +717,7 @@ impl CaliptraBuilder {
         } else {
             // Default MCU image configuration with valid addresses and exec_bit
             // exec_bit must be >= 2 (bits 0 and 1 are reserved by Caliptra)
-            let (staging_addr, load_addr) = if self.fpga {
+            let (staging_addr, load_addr) = if self.platform == Platform::Fpga {
                 // FPGA: use external staging SRAM
                 let staging_memory_map: u64 = 0xB00C_0000;
                 let staging_memory_size: u64 = 0x0004_0000; // 256 KB
@@ -853,7 +853,11 @@ impl CaliptraBuilder {
             return Self::compile_caliptra_rom_ref_cached(&rom_ref, fpga);
         }
 
-        let platform = if fpga { "fpga" } else { "emulator" };
+        let platform = if fpga {
+            Platform::Fpga
+        } else {
+            Platform::Emulator
+        };
         if let Some(version) = Self::caliptra_version() {
             let path = target_dir().join(format!("caliptra-rom-{}-{}.bin", version, platform));
             if path.exists() {
@@ -892,7 +896,11 @@ impl CaliptraBuilder {
     }
 
     fn compile_caliptra_rom_ref_cached(rom_ref: &str, fpga: bool) -> Result<PathBuf> {
-        let platform = if fpga { "fpga" } else { "emulator" };
+        let platform = if fpga {
+            Platform::Fpga
+        } else {
+            Platform::Emulator
+        };
         let cache_key = rom_ref.replace(
             |c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_',
             "_",
@@ -1007,7 +1015,11 @@ fn main() -> Result<()> {
         pqc_key_type: FwVerificationPqcKeyType,
         use_second_key: bool,
     ) -> Result<(PathBuf, String)> {
-        let platform = if fpga { "fpga" } else { "emulator" };
+        let platform = if fpga {
+            Platform::Fpga
+        } else {
+            Platform::Emulator
+        };
         let ocp_lock_suffix = if ocp_lock { "-ocp-lock" } else { "" };
         if let Some(version) = Self::caliptra_version() {
             let svn_or_default = svn.unwrap_or_default();
@@ -1205,7 +1217,11 @@ fn main() -> Result<()> {
             )?
         };
         let fw_bytes = bundle.to_bytes()?;
-        let platform = if fpga { "fpga" } else { "emulator" };
+        let platform = if fpga {
+            Platform::Fpga
+        } else {
+            Platform::Emulator
+        };
         let ocp_lock_suffix = if ocp_lock { "-ocp-lock" } else { "" };
         let version = Self::caliptra_version().unwrap_or("no_version".to_string());
         let svn_or_default = svn.unwrap_or_default();

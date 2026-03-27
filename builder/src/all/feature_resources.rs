@@ -220,7 +220,7 @@ fn build_single_feature_resource(
 
     // Build Caliptra artifacts with feature-specific runtime
     let mut caliptra_builder = CaliptraBuilder::new(&CaliptraBuildArgs {
-        fpga: ctx.fpga,
+        platform: ctx.platform,
         caliptra_rom: Some(base.caliptra_rom.clone()),
         caliptra_firmware: Some(base.caliptra_fw.clone()),
         vendor_pk_hash: Some(base.vendor_pk_hash.clone()),
@@ -374,7 +374,7 @@ fn build_feature_runtime(
         features: Some(&combined_features),
         output_name: Some(runtime_path_str),
         example_app: include_example_app,
-        platform: Some(&ctx.platform),
+        platform: ctx.platform,
         profile: ctx.profile.as_deref(),
         target_dir: target_dir.clone(),
         no_default_features: true,
@@ -451,7 +451,7 @@ fn build_hitless_update_flash_image(
         features: Some(&update_features),
         output_name: Some(update_runtime_path),
         example_app: FEATURES_WITH_EXAMPLE_APP.contains(&update_feature),
-        platform: Some(&ctx.platform),
+        platform: ctx.platform,
         profile: ctx.profile.as_deref(),
         target_dir: Some(update_target_dir),
         no_default_features: true,
@@ -459,7 +459,7 @@ fn build_hitless_update_flash_image(
     })?;
 
     let mut update_builder = CaliptraBuilder::new(&CaliptraBuildArgs {
-        fpga: ctx.fpga,
+        platform: ctx.platform,
         caliptra_rom: Some(base.caliptra_rom.clone()),
         caliptra_firmware: Some(base.caliptra_fw.clone()),
         vendor_pk_hash: Some(base.vendor_pk_hash.clone()),

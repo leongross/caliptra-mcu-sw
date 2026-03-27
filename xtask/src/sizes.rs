@@ -41,7 +41,7 @@ struct Row {
 /// Locate the ELF artifact for a built ROM variant. Mirrors the
 /// naming convention in `caliptra_mcu_builder::rom_build`.
 fn rom_elf_path(variant: &RomVariant) -> PathBuf {
-    let platform = variant.platform.unwrap_or("emulator");
+    let platform = variant.platform.unwrap_or_default();
     // The bundler/cargo build leaves the bare ELF (no `.bin`) at the
     // canonical `caliptra-mcu-rom-<platform>` name, regardless of the
     // feature-suffixed `.bin` output produced by `rom_build`.
@@ -85,7 +85,7 @@ fn collect_rows(variants: &[RomVariant]) -> Result<Vec<Row>> {
         let display = variant.display();
         println!("Building {display}...");
         rom_build(&CaliptraBuildArgs {
-            platform: variant.platform,
+            platform: variant.platform.unwrap_or_default(),
             features: variant.features,
             ..Default::default()
         })
@@ -93,7 +93,7 @@ fn collect_rows(variants: &[RomVariant]) -> Result<Vec<Row>> {
 
         let elf = rom_elf_path(variant);
         let text = text_section_size(&elf)?;
-        let rom_size = rom_size_for_platform(variant.platform.unwrap_or("emulator")) as u64;
+        let rom_size = rom_size_for_platform(variant.platform.unwrap_or_default()) as u64;
         let budget = rom_size
             .checked_sub(ROM_DIGEST_SIZE as u64)
             .ok_or_else(|| anyhow!("rom_size {rom_size} < digest size"))?;

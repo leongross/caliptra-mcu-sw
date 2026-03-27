@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_api_types::DeviceLifecycle;
-use caliptra_mcu_builder::{CaliptraBuildArgs, ImageCfg};
+use caliptra_mcu_builder::{CaliptraBuildArgs, ImageCfg, Platform};
 use caliptra_mcu_firmware_bundler::args::Commands as BundleCommands;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
@@ -118,8 +118,8 @@ enum Commands {
         output: Option<String>,
 
         /// Platform to build for. Default: emulator
-        #[arg(long)]
-        platform: Option<String>,
+        #[arg(long, value_enum, default_value_t = Platform::Emulator)]
+        platform: Platform,
 
         /// Build bare metal runtime instead of TockOS runtime
         #[arg(long, default_missing_value = "caliptra-mcu-bare-metal", num_args = 0..=1)]
@@ -138,8 +138,8 @@ enum Commands {
     /// Build ROM
     RomBuild {
         /// Platform to build for. Default: emulator
-        #[arg(long)]
-        platform: Option<String>,
+        #[arg(long, value_enum, default_value_t = Platform::Emulator)]
+        platform: Platform,
 
         /// Features to build ROM with.
         #[arg(long)]
@@ -173,8 +173,8 @@ enum Commands {
         output: Option<String>,
 
         /// Platform to build for. Default: emulator
-        #[arg(long)]
-        platform: Option<String>,
+        #[arg(long, value_enum, default_value_t = Platform::Emulator)]
+        platform: Platform,
 
         #[arg(long)]
         rom_features: Option<String>,
@@ -681,7 +681,7 @@ fn main() {
             total_shards,
         } => caliptra_mcu_builder::all_build(caliptra_mcu_builder::AllBuildArgs {
             output: output.clone(),
-            platform: platform.clone(),
+            platform: *platform,
             rom_features: rom_features.clone(),
             network_rom_features: network_rom_features.clone(),
             runtime_features: runtime_features.clone(),
@@ -712,8 +712,7 @@ fn main() {
             profile,
         } => {
             if let Some(bare_metal_pkg) = bare_metal {
-                caliptra_mcu_builder::bare_metal_build(platform.as_deref(), bare_metal_pkg)
-                    .map(|_| ())
+                caliptra_mcu_builder::bare_metal_build(*platform, bare_metal_pkg).map(|_| ())
             } else {
                 // The opt-in `release` cargo profile auto-enables the `release` cargo
                 // feature, which strips the kernel `debug!()` macro, romtime
@@ -738,7 +737,7 @@ fn main() {
                     &caliptra_mcu_builder::CaliptraBuildArgs {
                         features: Some(&features_str),
                         output_name: output.clone(),
-                        platform: platform.as_deref(),
+                        platform: *platform,
                         profile: Some(profile.as_str()),
                         no_default_features,
                         ..Default::default()
@@ -750,7 +749,7 @@ fn main() {
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
             caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
-                platform: platform.as_deref(),
+                platform: *platform,
                 features: features.as_deref(),
                 ..Default::default()
             })

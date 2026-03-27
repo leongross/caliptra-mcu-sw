@@ -314,14 +314,14 @@ pub(crate) fn test_panic_missing(
         let display = variant.display();
         println!("Checking ROM panic-freeness for {display}...");
         let rom_binary = rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
-            platform: variant.platform,
+            platform: variant.platform.unwrap_or_default(),
             features: variant.features,
             ..Default::default()
         })
         .with_context(|| format!("building ROM variant {display}"))?;
         // rom_build returns the `.bin`; the bare ELF lives alongside it
         // under `caliptra-mcu-rom-<platform>` with no extension.
-        let platform = variant.platform.unwrap_or("emulator");
+        let platform = variant.platform.unwrap_or_default();
         let rom_elf_path = rom_binary
             .with_file_name(format!("caliptra-mcu-rom-{platform}"))
             .with_extension("");

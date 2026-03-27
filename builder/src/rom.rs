@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Result};
 
 use crate::utils::manifest_file;
-use crate::PROJECT_ROOT;
+use crate::{Platform, PROJECT_ROOT};
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
 use caliptra_mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
@@ -14,14 +14,14 @@ use caliptra_mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 /// Build ROM file for a given `platform` with a set of `features` into a `target_dir`.
 pub fn rom_build(args: &crate::CaliptraBuildArgs) -> Result<PathBuf> {
     rom_build_inner(
-        args.platform.map(String::from),
+        args.platform,
         args.features.map(String::from),
         args.target_dir.clone(),
     )
 }
 
 fn rom_build_inner(
-    platform: Option<String>,
+    platform: Platform,
     features: Option<String>,
     target_dir: Option<PathBuf>,
 ) -> Result<PathBuf> {
@@ -30,18 +30,15 @@ fn rom_build_inner(
         None => String::new(),
     };
 
-    let target_name = format!(
-        "caliptra-mcu-rom-{}",
-        platform.clone().unwrap_or_else(|| "emulator".to_string())
-    );
+    let target_name = format!("caliptra-mcu-rom-{}", platform);
     let rom = format!("{target_name}{feature_suffix}");
-    let manifest = manifest_file(platform.as_deref(), false)?;
+    let manifest = manifest_file(platform, false)?;
     let common = Common {
         manifest,
         target_dir,
         ..Default::default()
     };
-    let rom_size = rom_size_for_platform(platform.as_deref().unwrap_or("emulator"));
+    let rom_size = rom_size_for_platform(platform);
     let rom_binary = common.release_dir().map(|t| t.join(format!("{rom}.bin")))?;
     let build_cmd = Commands::Build {
         common,
@@ -106,11 +103,11 @@ pub fn append_rom_digest(binary: &PathBuf, rom_size: usize) -> Result<()> {
 }
 
 pub fn test_rom_build(args: &crate::CaliptraBuildArgs) -> Result<String> {
-    let platform = args.platform.unwrap_or("emulator");
+    let platform = args.platform;
     let fwid = args.fwid.expect("fwid required for test_rom_build");
     let target_dir = args.target_dir.clone();
 
-    let template_name = if platform == "fpga" {
+    let template_name = if platform == Platform::Fpga {
         "fpga.toml"
     } else {
         "emulator.toml"
@@ -138,7 +135,7 @@ pub fn test_rom_build(args: &crate::CaliptraBuildArgs) -> Result<String> {
     if !features.contains(&"riscv") {
         features.push("riscv");
     }
-    if platform != "emulator" {
+    if platform == Platform::Fpga {
         features.push("fpga_realtime");
     }
 
@@ -171,9 +168,9 @@ pub fn test_rom_build(args: &crate::CaliptraBuildArgs) -> Result<String> {
     Ok(rom_binary.to_string_lossy().to_string())
 }
 
-pub fn rom_size_for_platform(platform: &str) -> usize {
+pub fn rom_size_for_platform(platform: Platform) -> usize {
     match platform {
-        "fpga" => caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.rom_size as usize,
-        _ => caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size as usize,
+        Platform::Fpga => caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.rom_size as usize,
+        Platform::Emulator => caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size as usize,
     }
 }

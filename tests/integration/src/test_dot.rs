@@ -153,7 +153,7 @@ mod test {
 
         // Fall back to computing from compiled FW bundle
         let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            fpga: cfg!(feature = "fpga_realtime"),
+            platform: crate::platform(),
             ..Default::default()
         });
         let fw_path = builder
@@ -441,7 +441,7 @@ mod test {
             };
 
         let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            fpga: cfg!(feature = "fpga_realtime"),
+            platform: crate::platform(),
             mcu_firmware: Some(mcu_runtime_path),
             caliptra_firmware: prebuilt_caliptra_fw,
             vendor_pk_hash: prebuilt_vendor_pk_hash,

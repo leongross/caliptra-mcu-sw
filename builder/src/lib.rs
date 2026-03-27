@@ -8,6 +8,7 @@ pub mod firmware;
 pub mod flash_image;
 mod network_rom;
 pub mod offline_signing;
+mod platform;
 mod rom;
 mod runtime;
 mod utils;
@@ -18,14 +19,14 @@ pub use all::{
 pub use caliptra::{AuthManifestOwnerConfig, AuthManifestPubKeysPaths, CaliptraBuilder, ImageCfg};
 pub use network_rom::network_rom_build;
 pub use offline_signing::*;
+pub use platform::Platform;
 pub use rom::{append_rom_digest, rom_build, rom_size_for_platform, test_rom_build};
 pub use runtime::{bare_metal_build, runtime_build_with_apps};
 
 #[derive(Default, Clone)]
 pub struct CaliptraBuildArgs<'a> {
-    pub fpga: bool,
     pub ocp_lock: bool,
-    pub platform: Option<&'a str>,
+    pub platform: Platform,
     pub features: Option<&'a str>,
     pub target_dir: Option<PathBuf>,
     pub fwid: Option<&'a caliptra_builder::FwId<'a>>,

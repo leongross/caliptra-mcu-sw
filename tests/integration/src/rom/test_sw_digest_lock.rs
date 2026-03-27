@@ -24,7 +24,7 @@ mod test {
             )
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
-                platform: Some(platform()),
+                platform: platform(),
                 fwid: Some(&firmware::hw_model_tests::SW_DIGEST_LOCK),
                 ..Default::default()
             })

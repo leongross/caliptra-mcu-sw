@@ -7,7 +7,7 @@
 // Copyright Tock Contributors 2022.
 
 use crate::utils::{bare_metal_manifest_file, manifest_file_for_profile};
-use crate::CaliptraBuildArgs;
+use crate::{CaliptraBuildArgs, Platform};
 use anyhow::Result;
 use caliptra_mcu_firmware_bundler::args::{
     BuildArgs, BundleArgs, Commands as BundleCommands, Common, LdArgs,
@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 fn runtime_features(
     features: Option<&str>,
-    platform: &str,
+    platform: Platform,
     no_default_features: bool,
     example_app: bool,
 ) -> Option<String> {
@@ -26,7 +26,7 @@ fn runtime_features(
     // The user app is shared by emulator and FPGA, but DOT Runtime storage is
     // currently implemented only by the emulator kernel. Keep DOT out of the
     // app's platform-neutral default feature set and add it for emulator builds.
-    if platform == "emulator" && !no_default_features && !example_app {
+    if platform == Platform::Emulator && !no_default_features && !example_app {
         for feature in ["dot-mci-mailbox", "dot-spdm-vdm"] {
             let features = runtime_features.get_or_insert_with(String::new);
             if !features.split(',').any(|enabled| enabled == feature) {
@@ -38,7 +38,7 @@ fn runtime_features(
         }
     }
 
-    if platform == "fpga" {
+    if platform == Platform::Fpga {
         let features = runtime_features.get_or_insert_with(String::new);
         if !features
             .split(',')
@@ -85,8 +85,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     };
 
     let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;
-    let platform_str = platform.unwrap_or("emulator");
-    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform_str));
+    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform));
 
     let common = Common {
         manifest,
@@ -98,12 +97,8 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let release_dir = common.release_dir()?;
     let runtime_bin = release_dir.join(&output_name);
 
-    let runtime_features = runtime_features(
-        features,
-        platform_str,
-        args.no_default_features,
-        example_app,
-    );
+    let runtime_features =
+        runtime_features(features, platform, args.no_default_features, example_app);
     let bundle_cmd = BundleCommands::Bundle {
         common,
         ld: LdArgs::default(),
@@ -124,10 +119,9 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     Ok(runtime_bin)
 }
 
-pub fn bare_metal_build(platform: Option<&str>, package_name: &str) -> Result<PathBuf> {
+pub fn bare_metal_build(platform: Platform, package_name: &str) -> Result<PathBuf> {
     let base_manifest_path = bare_metal_manifest_file(platform)?;
-    let platform_str = platform.unwrap_or("emulator");
-    let output_name = format!("{}-{}.bin", package_name, platform_str);
+    let output_name = format!("{}-{}.bin", package_name, platform);
 
     let manifest_content = std::fs::read_to_string(&base_manifest_path)?;
     let new_manifest_content = manifest_content.replace("{{BARE_METAL_NAME}}", package_name);
@@ -149,7 +143,7 @@ pub fn bare_metal_build(platform: Option<&str>, package_name: &str) -> Result<Pa
     };
     let runtime_bin = common.release_dir()?.join(&output_name);
 
-    let runtime_features = if platform == Some("fpga") {
+    let runtime_features = if platform == Platform::Fpga {
         Some("fpga".to_string())
     } else {
         None
@@ -174,11 +168,18 @@ pub fn bare_metal_build(platform: Option<&str>, package_name: &str) -> Result<Pa
 #[cfg(test)]
 mod tests {
     use super::runtime_features;
+    use crate::Platform;
 
     #[test]
     fn emulator_defaults_enable_dot() {
         assert_eq!(
-            runtime_features(Some("release,all-features"), "emulator", false, false).as_deref(),
+            runtime_features(
+                Some("release,all-features"),
+                Platform::Emulator,
+                false,
+                false
+            )
+            .as_deref(),
             Some("release,all-features,dot-mci-mailbox,dot-spdm-vdm")
         );
     }
@@ -186,7 +187,13 @@ mod tests {
     #[test]
     fn emulator_example_app_does_not_receive_user_app_dot_features() {
         assert_eq!(
-            runtime_features(Some("test-mcu-svn-gt-fuse"), "emulator", false, true).as_deref(),
+            runtime_features(
+                Some("test-mcu-svn-gt-fuse"),
+                Platform::Emulator,
+                false,
+                true
+            )
+            .as_deref(),
             Some("test-mcu-svn-gt-fuse")
         );
     }
@@ -196,7 +203,7 @@ mod tests {
         assert_eq!(
             runtime_features(
                 Some("test-caliptra-util-host-spdm-vdm-validator"),
-                "emulator",
+                Platform::Emulator,
                 true,
                 false,
             )
@@ -208,7 +215,7 @@ mod tests {
     #[test]
     fn fpga_defaults_exclude_dot() {
         assert_eq!(
-            runtime_features(Some("release,all-features"), "fpga", false, false).as_deref(),
+            runtime_features(Some("release,all-features"), Platform::Fpga, false, false).as_deref(),
             Some("release,all-features,disable-lms-sig-verify")
         );
     }

@@ -20,7 +20,7 @@ fn test_hitless_update_flow() -> Result<()> {
             )
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
-                platform: Some(platform()),
+                platform: platform(),
                 fwid: Some(mcu_rom_id),
                 ..Default::default()
             })?;

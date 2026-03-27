@@ -1,5 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_builder::Platform;
+
 mod i3c_socket;
 #[cfg(feature = "fpga_realtime")]
 mod jtag;
@@ -53,11 +55,11 @@ mod test_sw_pcr_store;
 mod test_timer_alarm;
 mod test_usb_ocp_recovery;
 
-pub fn platform() -> &'static str {
+pub fn platform() -> Platform {
     if cfg!(feature = "fpga_realtime") {
-        "fpga"
+        Platform::Fpga
     } else {
-        "emulator"
+        Platform::Emulator
     }
 }
 
@@ -66,7 +68,7 @@ mod test {
     use caliptra_mcu_builder::flash_image::{build_flash_image_bytes, write_partition_table};
     use caliptra_mcu_builder::{
         target_dir, CaliptraBuildArgs, CaliptraBuilder, EmulatorBinaries, FirmwareBinaries,
-        ImageCfg, TARGET,
+        ImageCfg, Platform, TARGET,
     };
     use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use caliptra_mcu_config_emulator::flash::{
@@ -280,12 +282,8 @@ mod test {
         get_or_compile_rom(feature)
     }
 
-    fn platform() -> &'static str {
-        if cfg!(feature = "fpga_realtime") {
-            "fpga"
-        } else {
-            "emulator"
-        }
+    fn platform() -> Platform {
+        super::platform()
     }
 
     fn compile_rom(feature: &str) -> PathBuf {
@@ -304,7 +302,7 @@ mod test {
         // intermediate mcu-rom-<platform>.bin (without the appended ROM
         // digest), which would silently clobber the copy.
         let output: PathBuf = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
-            platform: Some(platform()),
+            platform: platform(),
             features: Some(&feature),
             ..Default::default()
         })
@@ -364,7 +362,7 @@ mod test {
             },
             output_name: Some(name),
             example_app,
-            platform: Some(platform),
+            platform,
             profile,
             no_default_features: true,
             ..Default::default()
@@ -692,7 +690,7 @@ mod test {
         };
 
         let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-            fpga: cfg!(feature = "fpga_realtime"),
+            platform: platform(),
             ocp_lock: params
                 .feature
                 .map(|f| f.contains("ocp-lock"))
@@ -1221,7 +1219,7 @@ mod test {
             caliptra_builder
         } else {
             CaliptraBuilder::new(&CaliptraBuildArgs {
-                fpga: cfg!(feature = "fpga_realtime"),
+                platform: platform(),
                 ocp_lock: feature.contains("ocp-lock"),
                 mcu_firmware: Some(runtime_path.clone()),
                 soc_images,
@@ -1601,7 +1599,7 @@ mod test {
             create_caliptra_builder_with_prebuilt(test_runtime.clone(), &feature).unwrap_or_else(
                 || {
                     CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-                        fpga: cfg!(feature = "fpga_realtime"),
+                        platform: platform(),
                         mcu_firmware: Some(test_runtime.clone()),
                         ..Default::default()
                     })
@@ -1799,7 +1797,7 @@ mod test {
         let vendor_pk_hash = binaries.vendor_pk_hash().map(hex::encode);
 
         let caliptra_builder = CaliptraBuilder::new(&CaliptraBuildArgs {
-            fpga: cfg!(feature = "fpga_realtime"),
+            platform: platform(),
             ocp_lock: feature.contains("ocp-lock"),
             caliptra_rom: Some(caliptra_rom_path),
             caliptra_firmware: Some(caliptra_fw_path),

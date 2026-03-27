@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use caliptra_mcu_builder::features::RomVariant;
+use caliptra_mcu_builder::Platform;
 
 pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
     crate::cargo_lock::cargo_lock()?;
@@ -19,7 +20,7 @@ pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
         &caliptra_mcu_builder::CaliptraBuildArgs::default(),
     )?;
     caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
-        platform: Some("fpga"),
+        platform: Platform::Fpga,
         no_default_features: true,
         ..Default::default()
     })?;
@@ -40,7 +41,7 @@ pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
     // against its single 512 KB layout so size regressions and
     // release-only `cfg`s are caught.
     caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
-        platform: Some("fpga"),
+        platform: Platform::Fpga,
         features: Some("release"),
         profile: Some("release"),
         no_default_features: true,

@@ -35,7 +35,7 @@ pub(crate) fn build_all_variants(
         let display = variant.display();
         println!("Building ROM {display}...");
         caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
-            platform: variant.platform,
+            platform: variant.platform.unwrap_or_default(),
             features: variant.features,
             ..Default::default()
         })

@@ -1032,13 +1032,13 @@ fn reg_access_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliptra_mcu_builder::{firmware, CaliptraBuildArgs};
+    use caliptra_mcu_builder::{firmware, CaliptraBuildArgs, Platform};
 
-    fn platform() -> &'static str {
+    fn platform() -> Platform {
         if cfg!(feature = "fpga_realtime") {
-            "fpga"
+            Platform::Fpga
         } else {
-            "emulator"
+            Platform::Emulator
         }
     }
 
@@ -1048,7 +1048,7 @@ mod tests {
             binaries.test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)?
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
-                platform: Some(platform()),
+                platform: platform(),
                 fwid: Some(&firmware::hw_model_tests::MAILBOX_RESPONDER),
                 ..Default::default()
             })?;
@@ -1115,7 +1115,7 @@ mod tests {
             binaries.test_rom(&firmware::hw_model_tests::USB_RESPONDER)?
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
-                platform: Some(platform()),
+                platform: platform(),
                 fwid: Some(&firmware::hw_model_tests::USB_RESPONDER),
                 ..Default::default()
             })?;
@@ -1188,7 +1188,7 @@ mod tests {
             binaries.test_rom(&firmware::hw_model_tests::USB_OCP_RECOVERY)?
         } else {
             let rom_file = caliptra_mcu_builder::test_rom_build(&CaliptraBuildArgs {
-                platform: Some(platform()),
+                platform: platform(),
                 fwid: Some(&firmware::hw_model_tests::USB_OCP_RECOVERY),
                 ..Default::default()
             })?;

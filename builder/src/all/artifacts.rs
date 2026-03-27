@@ -17,7 +17,7 @@ use super::soc_images::{
     create_attestation_soc_images, create_default_owner_soc_images, create_default_soc_images,
     generated_user_app_config_fingerprint, pre_generate_attestation_manifest_config,
 };
-use crate::{CaliptraBuildArgs, CaliptraBuilder, ImageCfg, TARGET};
+use crate::{CaliptraBuildArgs, CaliptraBuilder, ImageCfg, Platform, TARGET};
 
 /// Base firmware artifacts produced by the build process.
 ///
@@ -80,7 +80,7 @@ impl BaseArtifacts {
     pub fn build(ctx: &AllBuildContext) -> Result<Self> {
         // Build MCU ROM
         let built_mcu_rom = crate::rom_build(&CaliptraBuildArgs {
-            platform: Some(&ctx.platform),
+            platform: ctx.platform,
             features: Some(&ctx.rom_features),
             ..Default::default()
         })?;
@@ -123,14 +123,14 @@ impl BaseArtifacts {
         // Feature-specific release test runtimes use `--no-default-features`
         // too, so `release` must not pull in unrelated services such as
         // firmware-update.
-        let no_default_features =
-            ctx.is_release || (ctx.fpga && ctx.base_runtime_features.is_empty());
+        let no_default_features = ctx.is_release
+            || (ctx.platform == Platform::Fpga && ctx.base_runtime_features.is_empty());
 
         let mcu_runtime = crate::runtime_build_with_apps(&CaliptraBuildArgs {
             features: base_features.as_deref(),
             output_name: Some(runtime_path),
             example_app: false,
-            platform: Some(&ctx.platform),
+            platform: ctx.platform,
             profile: ctx.profile.as_deref(),
             no_default_features,
             user_app_config_fingerprint: Some(base_user_app_config_fingerprint),
@@ -146,7 +146,7 @@ impl BaseArtifacts {
 
         let mut bare_metal_paths = vec![];
         for package in crate::features::BARE_METAL_BINARIES {
-            let path = crate::bare_metal_build(Some(&ctx.platform), package)?;
+            let path = crate::bare_metal_build(ctx.platform, package)?;
             bare_metal_paths.push((package.to_string(), path));
         }
 
@@ -157,7 +157,7 @@ impl BaseArtifacts {
             create_default_owner_soc_images(effective_soc_images.as_deref().unwrap_or(&[]))
         });
         let mut caliptra_builder = CaliptraBuilder::new(&CaliptraBuildArgs {
-            fpga: ctx.fpga,
+            platform: ctx.platform,
             mcu_firmware: Some(mcu_runtime.clone()),
             soc_images: effective_soc_images.clone(),
             owner_soc_images: Some(owner_soc_images.clone()),
@@ -178,22 +178,22 @@ impl BaseArtifacts {
 
         // Caliptra firmware variants used by the firmware update and rollback tests
         let caliptra_fw_svn7 = build_caliptra_fw_variant(CaliptraBuildArgs {
-            fpga: ctx.fpga,
+            platform: ctx.platform,
             svn: Some(7),
             ..Default::default()
         })?;
         let caliptra_fw_svn128 = build_caliptra_fw_variant(CaliptraBuildArgs {
-            fpga: ctx.fpga,
+            platform: ctx.platform,
             svn: Some(128),
             ..Default::default()
         })?;
         let caliptra_fw_key2 = build_caliptra_fw_variant(CaliptraBuildArgs {
-            fpga: ctx.fpga,
+            platform: ctx.platform,
             use_second_key: true,
             ..Default::default()
         })?;
         let caliptra_fw_ocp_lock = build_caliptra_fw_variant(CaliptraBuildArgs {
-            fpga: ctx.fpga,
+            platform: ctx.platform,
             ocp_lock: true,
             ..Default::default()
         })?;
