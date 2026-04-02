@@ -239,7 +239,6 @@ fn add_feature_resource(
 ) -> Result<()> {
     let feature = &resource.feature;
 
-    // Add runtime
     let runtime_name = format!("mcu-test-runtime-{}.bin", feature);
     println!(
         "Adding {} -> {}",
@@ -253,7 +252,6 @@ fn add_feature_resource(
         options,
     )?;
 
-    // Add SoC manifest
     let soc_manifest_name = format!("mcu-test-soc-manifest-{}.bin", feature);
     println!(
         "Adding {} -> {}",
@@ -305,7 +303,6 @@ fn add_feature_resource(
         add_bytes_to_zip(elf_bytes, &elf_name, zip, options)?;
     }
 
-    // Add flash image
     let flash_image_name = format!("mcu-test-flash-image-{}.bin", feature);
     println!(
         "Adding {} -> {}",
@@ -314,14 +311,12 @@ fn add_feature_resource(
     );
     add_to_zip(&resource.flash_image, &flash_image_name, zip, options)?;
 
-    // Add update flash image if present
     if let Some(ref update_flash) = resource.update_flash_image {
         let update_flash_name = format!("mcu-test-update-flash-image-{}.bin", feature);
         println!("Adding {} -> {}", update_flash.display(), update_flash_name);
         add_to_zip(update_flash, &update_flash_name, zip, options)?;
     }
 
-    // Add PLDM package
     let pldm_fw_pkg_name = format!("mcu-test-pldm-fw-pkg-{}.bin", feature);
     println!(
         "Adding {} -> {}",

@@ -37,10 +37,6 @@ pub struct AllBuildArgs {
 }
 
 /// Build context holding shared configuration for the build process.
-///
-/// This struct encapsulates all the configuration needed throughout
-/// the firmware build process, avoiding the need to thread parameters
-/// through multiple function calls.
 pub struct AllBuildContext {
     pub platform: Platform,
     /// Feature flags for ROM build.
@@ -101,17 +97,17 @@ impl AllBuildContext {
         // kernel `debug!()`, romtime `println!()`, Console, DebugWriter, etc.
         let is_release = args.profile.as_deref() == Some("release");
 
-        // Determine runtime features
         let mut runtime_features: Vec<String> = match args.runtime_features {
             Some(r) if !r.is_empty() => r.split(',').map(|s| s.to_string()).collect(),
             _ => {
                 if args.separate_runtimes {
                     let features = if is_release {
                         crate::features::RELEASE_RUNTIME_TEST_FEATURES
-                    } else if platform == Platform::Fpga {
-                        crate::features::FPGA_RUNTIME_TEST_FEATURES
                     } else {
-                        crate::features::EMULATOR_RUNTIME_TEST_FEATURES
+                        match platform {
+                            Platform::Fpga => crate::features::FPGA_RUNTIME_TEST_FEATURES,
+                            Platform::Emulator => crate::features::EMULATOR_RUNTIME_TEST_FEATURES,
+                        }
                     };
                     features.iter().map(|s| s.to_string()).collect()
                 } else {
