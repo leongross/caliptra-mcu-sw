@@ -72,7 +72,7 @@ enum DispatchResult {
 /// `&mut RomEnv`, so that `enter_i3c_services` can independently borrow
 /// `&Mci` for boot-status checkpoints without creating a duplicate handle.
 pub struct DotContext<'a> {
-    pub soc_manager: &'a mut caliptra_mcu_romtime::CaliptraSoC,
+    pub soc_manager: &'a mut crate::RomCaliptraSoC,
     pub mci: &'a caliptra_mcu_romtime::Mci,
     pub otp: &'a caliptra_mcu_romtime::otp::Otp,
     pub dot_fuses: &'a crate::DotFuses,

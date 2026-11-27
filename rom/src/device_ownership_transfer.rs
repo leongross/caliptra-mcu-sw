@@ -26,7 +26,7 @@ use caliptra_cfi_derive::cfi_mod_fn;
 use caliptra_cfi_lib::{cfi_assert, cfi_assert_bool, cfi_launder};
 use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_romtime::otp::Otp;
-use caliptra_mcu_romtime::{HexWord, McuRomBootStatus};
+use caliptra_mcu_romtime::{HexWord, McuRomBootStatus, SocManagerMailbox};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -155,7 +155,7 @@ pub fn load_owner_pkhash(otp: &Otp) -> Option<OwnerPkHash> {
 /// `OwnerPkHash` words are forwarded unchanged.
 #[cfg(hw_capability = "owner-pk-hash-mailbox")]
 pub(crate) fn install_owner_pk_hash(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     owner_pk_hash: &OwnerPkHash,
 ) -> McuResult<()> {
     let req = InstallOwnerPkHashReq {
@@ -349,7 +349,7 @@ fn cm_derive_stable_key(
 }
 
 pub(crate) fn cm_derive_stable_key_impl(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     dot_fuses: &DotFuses,
     key_type: CmStableKeyType,
 ) -> McuResult<DotEffectiveKey> {
@@ -423,7 +423,7 @@ impl Zeroize for CmHmacDotBlobReq {
 
 /// Calls Caliptra to compute an HMAC over DotBlobFields.
 pub(crate) fn cm_hmac(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     key: &Cmk,
     fields: &DotBlobFields,
 ) -> McuResult<[u32; 16]> {
@@ -470,7 +470,7 @@ pub(crate) fn cm_hmac(
 /// * `Err(McuError)` - If HMAC verification fails (blob is corrupted or invalid).
 #[cfg_attr(all(not(test), feature = "cfi"), cfi_mod_fn)]
 pub fn verify_dot_blob(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     blob: &DotBlob,
     key: &DotEffectiveKey,
 ) -> McuResult<()> {
@@ -757,7 +757,7 @@ impl Drop for RecoveryTransportZeroizeGuard<'_> {
 /// bytes of the u32 words on the caliptra side). The MLDSA words are
 /// passed through unchanged.
 pub(crate) fn cm_owner_pk_hash_sha384(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     ecc_pub_key: &EccP384PublicKey,
     mldsa_pub_key: &[u32],
 ) -> McuResult<[u8; SHA384_DIGEST_SIZE]> {
@@ -777,7 +777,7 @@ pub(crate) fn cm_owner_pk_hash_sha384(
 /// This is the core cryptographic verification shared between the MCI
 /// mailbox override flow and the I3C services override flow.
 pub(crate) fn verify_override_response(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     recovery_pk_hash: &RecoveryPkHash,
     auth: &OverrideAuth<'_>,
 ) -> McuResult<()> {
@@ -827,7 +827,7 @@ pub(crate) fn verify_override_response(
 /// After a successful override verification, burn the DOT lock fuse and
 /// write an empty DOT blob sealed with the new EVEN-state key.
 pub(crate) fn apply_override(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     otp: &Otp,
     dot_fuses: &DotFuses,
     dot_flash: &dyn FlashStorage,
@@ -870,7 +870,7 @@ const SHA384_DIGEST_SIZE: usize = 48;
 /// CM_SHA command via `exec_mailbox_req_u32_parts`.  This avoids copying
 /// large buffers (e.g. MLDSA public keys) onto the stack.
 pub(crate) fn cm_sha384(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     data_parts: &[&[u32]],
 ) -> McuResult<[u8; SHA384_DIGEST_SIZE]> {
     let total_data_bytes: usize = data_parts.iter().map(|p| p.len() * 4).sum();
@@ -909,9 +909,7 @@ pub(crate) fn cm_sha384(
 }
 
 /// Generates random bytes using Caliptra's CM_RANDOM_GENERATE command.
-pub(crate) fn cm_random_generate(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
-) -> McuResult<[u8; 48]> {
+pub(crate) fn cm_random_generate(soc_manager: &mut crate::RomCaliptraSoC) -> McuResult<[u8; 48]> {
     #[repr(C)]
     #[derive(Default, IntoBytes, FromBytes, KnownLayout, Immutable)]
     struct CmRandomReq {
@@ -967,7 +965,7 @@ pub(crate) fn cm_random_generate(
 ///
 /// This ROM command takes raw public key coordinates (not a CMK handle).
 pub(crate) fn cm_ecdsa384_verify(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     pub_key: &EccP384PublicKey,
     signature_r: &[u8; 48],
     signature_s: &[u8; 48],
@@ -1018,7 +1016,7 @@ pub(crate) fn cm_ecdsa384_verify(
 /// The public key and signature are passed as `&[u32]` slices and streamed
 /// directly to the mailbox to avoid an ~11 KB stack allocation.
 pub(crate) fn cm_mldsa87_verify(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     pub_key: &[u32],
     signature: &[u32],
     message: &[u32],
@@ -1102,7 +1100,7 @@ impl DotRecoveryHandler for BufferedRecoveryHandler {
 /// This is the shared core of DOT_RECOVERY used by both
 /// `dot_recovery_flow` (MCI path) and the I3C services handler.
 pub(crate) fn verify_and_write_recovery_blob(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
     dot_fuses: &DotFuses,
     blob_bytes: &[u8; DOT_BLOB_SIZE],
     dot_flash: &dyn FlashStorage,

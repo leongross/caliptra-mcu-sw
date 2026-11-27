@@ -145,6 +145,12 @@ pub static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PR
 
 pub type VeeRChip = caliptra_mcu_tock_veer::chip::VeeR<'static, VeeRDefaultPeripherals<'static>>;
 
+/// Caliptra's SoC interface at the addresses of this platform.
+pub type PlatformCaliptraSoC = CaliptraSoC<
+    { caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset },
+    { caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset },
+>;
+
 // Reference to the chip and peripherals for panic dumps and tests.
 pub static mut CHIP: Option<&'static VeeRChip> = None;
 pub static mut EMULATOR_PERIPHERALS: Option<&'static EmulatorPeripherals> = None;
@@ -208,8 +214,9 @@ struct VeeR {
     mailbox: &'static caliptra_mcu_capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
+        PlatformCaliptraSoC,
     >,
-    caliptra: &'static caliptra_mcu_capsules_runtime::caliptra::Caliptra,
+    caliptra: &'static caliptra_mcu_capsules_runtime::caliptra::Caliptra<PlatformCaliptraSoC>,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
     #[cfg(feature = "userspace-log")]
     logging_flash: [Option<
@@ -647,23 +654,15 @@ pub unsafe fn main() {
     )
     .finalize(mailbox_component_static!(
         InternalTimers<'static>,
-        Some(MCU_MEMORY_MAP.soc_offset),
-        Some(MCU_MEMORY_MAP.soc_offset),
-        Some(MCU_MEMORY_MAP.mbox_offset),
+        PlatformCaliptraSoC,
         mbox_staging_addr
     ));
     mailbox.alarm.set_alarm_client(mailbox);
 
-    let caliptra_soc = static_init!(
-        caliptra_mcu_romtime::CaliptraSoC,
-        caliptra_mcu_romtime::CaliptraSoC::new(
-            Some(MCU_MEMORY_MAP.soc_offset),
-            Some(MCU_MEMORY_MAP.mbox_offset)
-        )
-    );
+    let caliptra_soc = static_init!(PlatformCaliptraSoC, CaliptraSoC);
 
     let caliptra = static_init!(
-        caliptra_mcu_capsules_runtime::caliptra::Caliptra,
+        caliptra_mcu_capsules_runtime::caliptra::Caliptra<PlatformCaliptraSoC>,
         caliptra_mcu_capsules_runtime::caliptra::Caliptra::new(
             board_kernel.create_grant(
                 caliptra_mcu_capsules_runtime::caliptra::DRIVER_NUM,

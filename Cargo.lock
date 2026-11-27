@@ -1145,6 +1145,7 @@ dependencies = [
 name = "caliptra-mcu-components"
 version = "0.1.0"
 dependencies = [
+ "caliptra-api",
  "caliptra-mcu-capsules-emulator",
  "caliptra-mcu-capsules-runtime",
  "caliptra-mcu-config",
@@ -2254,6 +2255,7 @@ dependencies = [
  "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
+ "caliptra-ureg",
  "constant_time_eq 0.4.2",
  "riscv-csr",
  "rv32i",

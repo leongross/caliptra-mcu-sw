@@ -10,30 +10,32 @@ use caliptra_api::{
     },
     CaliptraApiError, SocManager,
 };
-use caliptra_mcu_registers_generated::{mbox, soc};
-use caliptra_ureg::RealMmioMut;
+use caliptra_ureg::{MmioMut, RealMmioMut};
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
-pub struct CaliptraSoC {
-    _private: (), // ensure that this struct cannot be instantiated directly except through new
-    soc_ifc_addr: u32,
-    soc_mbox_addr: u32,
-}
+/// Maximum number of polls of the mailbox status before a command times out.
+pub const MAILBOX_MAX_WAIT_CYCLES: u32 = 400_000;
 
-impl SocManager for CaliptraSoC {
-    /// Maximum number of wait cycles.
-    const MAX_WAIT_CYCLES: u32 = 400_000;
+/// Caliptra's SoC interface at addresses that are fixed at compile time.
+///
+/// The addresses of the SoC interface and mailbox register blocks are part of
+/// the type, so a platform names its instance once with a type alias.
+#[derive(Default)]
+pub struct CaliptraSoC<const SOC_IFC_ADDR: u32, const SOC_MBOX_ADDR: u32>;
+
+impl<const SOC_IFC_ADDR: u32, const SOC_MBOX_ADDR: u32> SocManager
+    for CaliptraSoC<SOC_IFC_ADDR, SOC_MBOX_ADDR>
+{
+    const MAX_WAIT_CYCLES: u32 = MAILBOX_MAX_WAIT_CYCLES;
 
     /// The MCU only talks to a Caliptra in subsystem mode, where the mailbox is
     /// 16 KiB. Larger requests have to use the external mailbox (AXI staging).
     const MAILBOX_SIZE_LIMIT: usize = SUBSYSTEM_MAILBOX_SIZE_LIMIT;
 
-    /// Type alias for mutable memory-mapped I/O.
     type TMmio<'a> = RealMmioMut<'a>;
 
-    /// Returns a mutable reference to the memory-mapped I/O.
     fn mmio_mut(&mut self) -> Self::TMmio<'_> {
-        caliptra_ureg::RealMmioMut::default()
+        RealMmioMut::default()
     }
 
     /// Provides a delay function to be invoked when polling mailbox status.
@@ -42,24 +44,53 @@ impl SocManager for CaliptraSoC {
     }
 
     fn soc_ifc_addr(&self) -> u32 {
-        self.soc_ifc_addr
+        SOC_IFC_ADDR
     }
 
     fn soc_mbox_addr(&self) -> u32 {
-        self.soc_mbox_addr
+        SOC_MBOX_ADDR
     }
 }
 
-impl CaliptraSoC {
-    pub fn new(soc_ifc_addr: Option<u32>, soc_mbox_addr: Option<u32>) -> Self {
-        CaliptraSoC {
-            _private: (),
-            soc_ifc_addr: soc_ifc_addr.unwrap_or(soc::SOC_IFC_REG_ADDR),
-            soc_mbox_addr: soc_mbox_addr.unwrap_or(mbox::MBOX_CSR_ADDR),
+/// Wait for the mailbox response status. Returns `Ok(Some(dlen))` if
+/// data is ready, `Ok(None)` if the command completed with no data,
+/// or an error on failure/timeout.
+fn wait_for_resp_status<S: SocManager + ?Sized>(
+    soc: &mut S,
+) -> core::result::Result<Option<usize>, CaliptraApiError> {
+    let mut timeout_cycles = S::MAX_WAIT_CYCLES; // 100ms @400MHz
+    while soc.soc_mbox().status().read().status().cmd_busy() {
+        soc.delay();
+        timeout_cycles -= 1;
+        if timeout_cycles == 0 {
+            return Err(CaliptraApiError::MailboxTimeout);
         }
     }
+    let status = soc.soc_mbox().status().read().status();
+    if status.cmd_failure() {
+        soc.soc_mbox().execute().write(|w| w.execute(false));
+        let soc_ifc = soc.soc_ifc();
+        return Err(CaliptraApiError::MailboxCmdFailed(
+            if soc_ifc.cptra_fw_error_fatal().read() != 0 {
+                soc_ifc.cptra_fw_error_fatal().read()
+            } else {
+                soc_ifc.cptra_fw_error_non_fatal().read()
+            },
+        ));
+    }
+    if status.cmd_complete() {
+        soc.soc_mbox().execute().write(|w| w.execute(false));
+        return Ok(None);
+    }
+    if !status.data_ready() {
+        return Err(CaliptraApiError::UnknownCommandStatus(status as u32));
+    }
+    Ok(Some(soc.soc_mbox().dlen().read() as usize))
+}
 
-    pub fn execute_ext_mailbox_req(
+/// Mailbox helpers for the MCU firmware, available on every [`SocManager`].
+pub trait SocManagerMailbox: SocManager {
+    fn execute_ext_mailbox_req(
         &mut self,
         cmd: u32,
         len_bytes: usize,
@@ -82,46 +113,13 @@ impl CaliptraSoC {
         )
     }
 
-    /// Wait for the mailbox response status. Returns `Ok(Some(dlen))` if
-    /// data is ready, `Ok(None)` if the command completed with no data,
-    /// or an error on failure/timeout.
-    fn wait_for_resp_status(&mut self) -> core::result::Result<Option<usize>, CaliptraApiError> {
-        let mut timeout_cycles = Self::MAX_WAIT_CYCLES; // 100ms @400MHz
-        while self.soc_mbox().status().read().status().cmd_busy() {
-            self.delay();
-            timeout_cycles -= 1;
-            if timeout_cycles == 0 {
-                return Err(CaliptraApiError::MailboxTimeout);
-            }
-        }
-        let status = self.soc_mbox().status().read().status();
-        if status.cmd_failure() {
-            self.soc_mbox().execute().write(|w| w.execute(false));
-            let soc_ifc = self.soc_ifc();
-            return Err(CaliptraApiError::MailboxCmdFailed(
-                if soc_ifc.cptra_fw_error_fatal().read() != 0 {
-                    soc_ifc.cptra_fw_error_fatal().read()
-                } else {
-                    soc_ifc.cptra_fw_error_non_fatal().read()
-                },
-            ));
-        }
-        if status.cmd_complete() {
-            self.soc_mbox().execute().write(|w| w.execute(false));
-            return Ok(None);
-        }
-        if !status.data_ready() {
-            return Err(CaliptraApiError::UnknownCommandStatus(status as u32));
-        }
-        Ok(Some(self.soc_mbox().dlen().read() as usize))
-    }
-
     /// Finished a mailbox request, validating the checksum of the response.
-    pub fn finish_mailbox_resp(
+    fn finish_mailbox_resp(
         &mut self,
         resp_min_size: usize,
         resp_size: usize,
-    ) -> core::result::Result<Option<CaliptraMailboxResponse<'_>>, CaliptraApiError> {
+    ) -> core::result::Result<Option<CaliptraMailboxResponse<Self::TMmio<'_>>>, CaliptraApiError>
+    {
         if resp_size < mem::size_of::<MailboxRespHeader>() {
             return Err(CaliptraApiError::MailboxRespTypeTooSmall);
         }
@@ -129,7 +127,7 @@ impl CaliptraSoC {
             return Err(CaliptraApiError::MailboxRespTypeTooSmall);
         }
 
-        let dlen_bytes = match self.wait_for_resp_status()? {
+        let dlen_bytes = match wait_for_resp_status(self)? {
             Some(dlen) => dlen,
             None => return Ok(None),
         };
@@ -154,7 +152,7 @@ impl CaliptraSoC {
     /// stack — the caller can pass references to wherever the data already
     /// lives (SRAM, flash, etc.).  All slices are `&[u32]` because the MCI
     /// mailbox SRAM may not be byte-addressable.
-    pub fn exec_mailbox_req_u32_parts(
+    fn exec_mailbox_req_u32_parts(
         &mut self,
         cmd: u32,
         hdr: &mut [u32],
@@ -232,7 +230,7 @@ impl CaliptraSoC {
     /// writing the response to a u32 slice.
     /// This is useful for code size to avoid unaligned and byte-level access,
     /// when possible.
-    pub fn exec_mailbox_req_u32(
+    fn exec_mailbox_req_u32(
         &mut self,
         cmd: u32,
         req: &mut [u32],
@@ -274,11 +272,11 @@ impl CaliptraSoC {
     /// The response (including `MailboxRespHeader`) is written to `resp`.
     /// The caller should use `zerocopy::FromBytes::read_from_bytes` to parse the
     /// response into a typed struct.
-    pub fn finish_mailbox_resp_bytes(
+    fn finish_mailbox_resp_bytes(
         &mut self,
         resp: &mut [u8],
     ) -> core::result::Result<usize, CaliptraApiError> {
-        let dlen_bytes = match self.wait_for_resp_status()? {
+        let dlen_bytes = match wait_for_resp_status(self)? {
             Some(dlen) => dlen,
             None => return Ok(0),
         };
@@ -347,7 +345,7 @@ impl CaliptraSoC {
     /// the response, reads it into `resp`, and verifies the checksum.
     ///
     /// Returns the number of response bytes written to `resp`.
-    pub fn exec_mailbox_req(
+    fn exec_mailbox_req(
         &mut self,
         cmd: u32,
         req: &mut [u8],
@@ -372,20 +370,22 @@ impl CaliptraSoC {
         self.finish_mailbox_resp_bytes(resp)
     }
 
-    pub fn read_vendor_pk_hash(&mut self) -> [u32; 12] {
+    fn read_vendor_pk_hash(&mut self) -> [u32; 12] {
         self.soc_ifc().fuse_vendor_pk_hash().read()
     }
 }
 
-pub struct CaliptraMailboxResponse<'a> {
-    soc_mbox: caliptra_registers::mbox::RegisterBlock<RealMmioMut<'a>>,
+impl<S: SocManager + ?Sized> SocManagerMailbox for S {}
+
+pub struct CaliptraMailboxResponse<M: MmioMut> {
+    soc_mbox: caliptra_registers::mbox::RegisterBlock<M>,
     idx: usize,
     dlen_bytes: usize,
     checksum: u32,
     expected_checksum: u32,
 }
 
-impl CaliptraMailboxResponse<'_> {
+impl<M: MmioMut> CaliptraMailboxResponse<M> {
     pub fn verify_checksum(&self) -> Result<(), CaliptraApiError> {
         let checksum = 0u32.wrapping_sub(self.checksum);
         if checksum == self.expected_checksum {
@@ -407,7 +407,7 @@ impl CaliptraMailboxResponse<'_> {
     }
 }
 
-impl Iterator for CaliptraMailboxResponse<'_> {
+impl<M: MmioMut> Iterator for CaliptraMailboxResponse<M> {
     type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -440,7 +440,7 @@ impl Iterator for CaliptraMailboxResponse<'_> {
     }
 }
 
-impl Drop for CaliptraMailboxResponse<'_> {
+impl<M: MmioMut> Drop for CaliptraMailboxResponse<M> {
     fn drop(&mut self) {
         // Release the lock
         self.soc_mbox.execute().write(|w| w.execute(false));

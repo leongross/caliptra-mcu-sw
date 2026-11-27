@@ -19,7 +19,8 @@ use crate::mailbox;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
-    FuseParams, I3cMailboxHandler, I3cServicesModes, RomEnv, RomParameters, MCU_MEMORY_MAP,
+    FuseParams, I3cMailboxHandler, I3cServicesModes, RomCaliptraSoC, RomEnv, RomParameters,
+    MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
     ActivateFirmwareFlags, ActivateFirmwareReq, ActivateFirmwareResp, CmImportReq, CmImportResp,
@@ -45,8 +46,8 @@ use caliptra_mcu_romtime::handoff::{HandoffData, STABLE_OWNER_KEY_CMK_SIZE};
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_romtime::ocp_lock::HekState;
 use caliptra_mcu_romtime::{
-    CaliptraSoC, HexBytes, HexWord, LifecycleControllerState, LifecycleToken, McuBootMilestones,
-    McuRomBootStatus,
+    HexBytes, HexWord, LifecycleControllerState, LifecycleToken, McuBootMilestones,
+    McuRomBootStatus, SocManagerMailbox,
 };
 use core::ops::Deref;
 
@@ -545,7 +546,7 @@ impl ColdBoot {
     /// `sha384` is the SHA-384 digest of the ciphertext, obtained from the
     /// GET_MCU_FW_SIZE response (computed by Caliptra RT during the recovery flow).
     /// After decryption the plaintext replaces the ciphertext in SRAM.
-    fn decrypt_firmware(soc_manager: &mut CaliptraSoC, ciphertext_size: u32, sha384: &[u8; 48]) {
+    fn decrypt_firmware(soc_manager: &mut RomCaliptraSoC, ciphertext_size: u32, sha384: &[u8; 48]) {
         if ciphertext_size == 0 {
             fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_SIZE_ZERO);
         }
@@ -581,7 +582,7 @@ impl ColdBoot {
     }
 
     /// Calculate SHA384 hash of ROM and compare it against the stored value. Optionally stash it.
-    fn rom_digest_integrity(soc_manager: &mut CaliptraSoC, stash: bool) {
+    fn rom_digest_integrity(soc_manager: &mut RomCaliptraSoC, stash: bool) {
         const DIGEST_SIZE: usize = 48;
         // Safety: MCU_MEMORY_MAP fields are linker-provided constants.
         let rom_size = unsafe { MCU_MEMORY_MAP.rom_size } as usize;
@@ -616,7 +617,11 @@ impl ColdBoot {
         }
     }
 
-    fn stash_measurement(soc_manager: &mut CaliptraSoC, metadata: [u8; 4], measurement: &[u8; 48]) {
+    fn stash_measurement(
+        soc_manager: &mut RomCaliptraSoC,
+        metadata: [u8; 4],
+        measurement: &[u8; 48],
+    ) {
         let mut req = StashMeasurementReq {
             hdr: MailboxReqHeader { chksum: 0 },
             metadata,
@@ -663,7 +668,7 @@ impl ColdBoot {
     }
 
     /// Import the test AES key via CM_IMPORT and return the CMK handle.
-    fn cm_import_aes_key(soc_manager: &mut CaliptraSoC) -> Cmk {
+    fn cm_import_aes_key(soc_manager: &mut RomCaliptraSoC) -> Cmk {
         let mut input = [0u8; 64]; // MAX_KEY_SIZE = 64
         match input.get_mut(..32) {
             Some(dst) => dst.copy_from_slice(&MCU_TEST_AES_KEY),
@@ -707,7 +712,7 @@ impl ColdBoot {
 
     /// Issue CM_AES_GCM_DECRYPT_DMA to decrypt firmware in-place via DMA.
     fn cm_aes_gcm_decrypt_dma(
-        soc_manager: &mut CaliptraSoC,
+        soc_manager: &mut RomCaliptraSoC,
         cmk: &Cmk,
         tag: &[u8; GCM_TAG_SIZE],
         encrypted_data_sha384: &[u8; 48],
@@ -772,7 +777,7 @@ impl ColdBoot {
     /// forever after the upcoming `trigger_warm_reset()`, because
     /// `mcu_sram_fw_exec_region_lock` (= Caliptra's `FW_EXEC_CTRL[MCU]`)
     /// is what gates reset release.
-    fn activate_firmware_initial(soc_manager: &mut CaliptraSoC, ciphertext_size: u32) {
+    fn activate_firmware_initial(soc_manager: &mut RomCaliptraSoC, ciphertext_size: u32) {
         let mut req = ActivateFirmwareReq {
             fw_id_count: 1,
             mcu_fw_image_size: ciphertext_size,
@@ -805,7 +810,7 @@ impl ColdBoot {
     /// ciphertext length in bytes (GCM tag excluded — Caliptra RT strips it)
     /// and `sha384` is the SHA-384 digest of the ciphertext only, computed
     /// by Caliptra RT during the recovery flow.
-    fn get_mcu_fw_size(soc_manager: &mut CaliptraSoC) -> (u32, [u8; 48]) {
+    fn get_mcu_fw_size(soc_manager: &mut RomCaliptraSoC) -> (u32, [u8; 48]) {
         let mut req = MailboxReqHeader { chksum: 0 };
         let chksum = calc_checksum(CMD_GET_MCU_FW_SIZE, &[]);
         req.chksum = chksum;
@@ -867,7 +872,7 @@ impl ColdBoot {
     fn handle_fips_zeroization(
         mci: &caliptra_mcu_romtime::Mci,
         lc: &caliptra_mcu_romtime::Lifecycle,
-        soc_manager: &mut CaliptraSoC,
+        soc_manager: &mut RomCaliptraSoC,
     ) -> ! {
         caliptra_mcu_romtime::println!("[mcu-rom] Executing FIPS zeroization flow");
 
@@ -944,10 +949,7 @@ impl ColdBoot {
 
     /// Report HEK metadata to Caliptra ROM via the REPORT_HEK_METADATA mailbox command.
     #[cfg(feature = "ocp-lock")]
-    fn report_hek_metadata(
-        hek_state: Option<HekState>,
-        soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
-    ) {
+    fn report_hek_metadata(hek_state: Option<HekState>, soc_manager: &mut crate::RomCaliptraSoC) {
         if cfg!(feature = "core_test") {
             return;
         }
@@ -1985,7 +1987,7 @@ impl BootFlow for ColdBoot {
 }
 
 fn reinitialize_cfi_state(
-    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    soc_manager: &mut crate::RomCaliptraSoC,
 ) -> caliptra_mcu_error::McuResult<()> {
     let mut gen = || {
         let bytes = device_ownership_transfer::cm_random_generate(soc_manager)

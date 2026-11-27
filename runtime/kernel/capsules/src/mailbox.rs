@@ -8,7 +8,7 @@ use caliptra_api::mailbox::SUBSYSTEM_MAILBOX_SIZE_LIMIT;
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use caliptra_mcu_romtime::println;
-use caliptra_mcu_romtime::CaliptraSoC;
+use caliptra_mcu_romtime::SocManagerMailbox;
 use core::cell::Cell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::hil::time::{Alarm, AlarmClient};
@@ -59,10 +59,10 @@ enum MailboxState {
 #[derive(Default)]
 pub struct App {}
 
-pub struct Mailbox<'a, A: Alarm<'a>> {
+pub struct Mailbox<'a, A: Alarm<'a>, S: SocManager + 'static> {
     pub alarm: &'a A,
     // The underlying Caliptra API SoC interface
-    driver: TakeCell<'static, CaliptraSoC>,
+    driver: TakeCell<'static, S>,
     // Per-app state.
     apps: Grant<
         App,
@@ -91,7 +91,7 @@ pub struct Mailbox<'a, A: Alarm<'a>> {
     dma_driver: &'static dyn Dma,
 }
 
-impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
+impl<'a, A: Alarm<'a>, S: SocManager + 'static> Mailbox<'a, A, S> {
     pub fn new(
         alarm: &'a A,
         grant: Grant<
@@ -100,11 +100,11 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
-        driver: &'static mut CaliptraSoC,
+        driver: &'static mut S,
         staging_sram_axi_addr: Option<u64>,
         dma_driver: &'static dyn Dma,
         timeout_ticks: Option<u32>,
-    ) -> Mailbox<'a, A> {
+    ) -> Mailbox<'a, A, S> {
         Mailbox {
             alarm,
             driver: TakeCell::new(driver),
@@ -236,7 +236,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     fn start_request(
         &self,
         processid: ProcessId,
-        driver: &mut CaliptraSoC,
+        driver: &mut S,
         command: u32,
         app_buffer: &ReadableProcessSlice,
     ) -> Result<(), ErrorCode> {
@@ -413,7 +413,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         self.use_external_mailbox.set(false);
     }
 
-    fn abort_and_reset(&self, driver: &mut CaliptraSoC) {
+    fn abort_and_reset(&self, driver: &mut S) {
         driver.unlock_mailbox();
         self.reset_to_idle();
     }
@@ -484,7 +484,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     /// Returns number of bytes in response  if the response was copied to the app.
     fn copy_from_mailbox(
         &self,
-        driver: &mut CaliptraSoC,
+        driver: &mut S,
         output: &WriteableProcessSlice,
     ) -> Result<usize, CaliptraApiError> {
         match driver.finish_mailbox_resp(self.resp_min_size.get(), self.resp_size.get()) {
@@ -516,7 +516,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     }
 
     /// Completes the request by copying the response or error from the mailbox.
-    fn try_complete_request(&self, driver: &mut CaliptraSoC) {
+    fn try_complete_request(&self, driver: &mut S) {
         // response is ready, do the dance to pass it to the app
         if let Some(process_id) = self.current_app.take() {
             let enter_result = self.apps.enter(process_id, |_app, kernel_data| {
@@ -573,7 +573,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     }
 }
 
-impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
+impl<'a, A: Alarm<'a>, S: SocManager + 'static> AlarmClient for Mailbox<'a, A, S> {
     fn alarm(&self) {
         match self.state.get() {
             MailboxState::Initiated => {
@@ -614,7 +614,7 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
 }
 
 /// Provide an interface for userland.
-impl<'a, A: Alarm<'a>> SyscallDriver for Mailbox<'a, A> {
+impl<'a, A: Alarm<'a>, S: SocManager + 'static> SyscallDriver for Mailbox<'a, A, S> {
     /// Command interface.
     ///
     /// Commands are selected by the lowest 8 bits of the first argument.

@@ -13,10 +13,46 @@ Abstract:
 --*/
 
 use crate::Soc;
+use caliptra_api::mailbox::SUBSYSTEM_MAILBOX_SIZE_LIMIT;
+use caliptra_api::SocManager;
 use caliptra_mcu_registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
-use caliptra_mcu_romtime::{CaliptraSoC, Mci, StaticRef};
 use caliptra_mcu_romtime::{Lifecycle, Otp};
+use caliptra_mcu_romtime::{Mci, StaticRef, MAILBOX_MAX_WAIT_CYCLES};
+use caliptra_ureg::RealMmioMut;
 use core::ptr::addr_of;
+
+/// Caliptra's SoC interface at the addresses of the platform memory map that
+/// the ROM is linked with.
+pub struct RomCaliptraSoC;
+
+impl SocManager for RomCaliptraSoC {
+    const MAX_WAIT_CYCLES: u32 = MAILBOX_MAX_WAIT_CYCLES;
+
+    /// The MCU only talks to a Caliptra in subsystem mode, where the mailbox is
+    /// 16 KiB. Larger requests have to use the external mailbox (AXI staging).
+    const MAILBOX_SIZE_LIMIT: usize = SUBSYSTEM_MAILBOX_SIZE_LIMIT;
+
+    type TMmio<'a> = RealMmioMut<'a>;
+
+    fn mmio_mut(&mut self) -> Self::TMmio<'_> {
+        RealMmioMut::default()
+    }
+
+    /// Provides a delay function to be invoked when polling mailbox status.
+    fn delay(&mut self) {
+        core::hint::spin_loop();
+    }
+
+    fn soc_ifc_addr(&self) -> u32 {
+        // Safety: MCU_MEMORY_MAP fields are linker-provided constants.
+        unsafe { crate::MCU_MEMORY_MAP.soc_offset }
+    }
+
+    fn soc_mbox_addr(&self) -> u32 {
+        // Safety: MCU_MEMORY_MAP fields are linker-provided constants.
+        unsafe { crate::MCU_MEMORY_MAP.mbox_offset }
+    }
+}
 
 /// ROM Environment containing all peripherals and managers
 pub struct RomEnv {
@@ -28,7 +64,7 @@ pub struct RomEnv {
     pub i3c_base: StaticRef<i3c::regs::I3c>,
     pub i3c1: crate::i3c::I3c,
     pub i3c1_base: StaticRef<i3c::regs::I3c>,
-    pub soc_manager: CaliptraSoC,
+    pub soc_manager: RomCaliptraSoC,
     pub straps: StaticRef<caliptra_mcu_config::McuStraps>,
 }
 
@@ -54,12 +90,6 @@ impl RomEnv {
             let mci_base: StaticRef<mci::regs::Mci> =
                 StaticRef::new(crate::MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci);
 
-            // Create SoC manager
-            let soc_manager = CaliptraSoC::new(
-                Some(crate::MCU_MEMORY_MAP.soc_offset),
-                Some(crate::MCU_MEMORY_MAP.mbox_offset),
-            );
-
             // Create peripherals
             let soc = Soc::new(soc_base);
             let mci = Mci::new(mci_base);
@@ -77,7 +107,7 @@ impl RomEnv {
                 i3c_base,
                 i3c1,
                 i3c1_base,
-                soc_manager,
+                soc_manager: RomCaliptraSoC,
                 straps,
             }
         }

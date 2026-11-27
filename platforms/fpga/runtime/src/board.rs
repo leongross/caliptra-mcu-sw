@@ -136,6 +136,12 @@ pub static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PR
 
 pub type VeeRChip = caliptra_mcu_tock_veer::chip::VeeR<'static, VeeRDefaultPeripherals<'static>>;
 
+/// Caliptra's SoC interface at the addresses of this platform.
+pub type PlatformCaliptraSoC = CaliptraSoC<
+    { caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.soc_offset },
+    { caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.mbox_offset },
+>;
+
 // Reference to the chip and peripherals for panic dumps and tests.
 pub static mut CHIP: Option<&'static VeeRChip> = None;
 
@@ -213,6 +219,7 @@ struct VeeR {
     mailbox: &'static caliptra_mcu_capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
+        PlatformCaliptraSoC,
     >,
     mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
     #[cfg(feature = "mcu-mbox-service")]
@@ -630,9 +637,7 @@ pub unsafe fn main() {
     )
     .finalize(caliptra_mcu_components::mailbox_component_static!(
         InternalTimers<'static>,
-        Some(MCU_MEMORY_MAP.soc_offset),
-        Some(MCU_MEMORY_MAP.soc_offset),
-        Some(MCU_MEMORY_MAP.mbox_offset),
+        PlatformCaliptraSoC,
         mbox_staging_addr
     ));
 

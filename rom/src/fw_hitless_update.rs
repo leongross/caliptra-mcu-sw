@@ -25,6 +25,8 @@ use crate::{BootFlow, RomEnv, RomParameters};
 use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 #[cfg(not(feature = "test-force-hitless-update"))]
 use caliptra_mcu_error::McuError;
+#[cfg(not(feature = "test-force-hitless-update"))]
+use caliptra_mcu_romtime::SocManagerMailbox;
 
 pub struct FwHitlessUpdate {}
 

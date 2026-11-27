@@ -12,13 +12,14 @@ Abstract:
 
 --*/
 
+use crate::RomCaliptraSoC;
 use crate::{err_code, fatal_error};
 use caliptra_api::mailbox::{
     CmShaFinalResp, CmShaInitResp, CommandId, CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
 use caliptra_api::SocManager;
 use caliptra_mcu_error::McuError;
-use caliptra_mcu_romtime::{CaliptraSoC, HexWord};
+use caliptra_mcu_romtime::{HexWord, SocManagerMailbox};
 
 /// CmHashAlgorithm::Sha384 value (matches caliptra-api enum).
 const CM_HASH_ALGORITHM_SHA384: u32 = 1;
@@ -59,7 +60,7 @@ fn ctx_as_u32(ctx: &[u8; CMB_SHA_CONTEXT_SIZE]) -> &[u32; CTX_DWORDS] {
 /// require. Cloned iterators must yield the same words for the checksum and
 /// mailbox payload.
 pub fn cm_sha384(
-    soc_manager: &mut CaliptraSoC,
+    soc_manager: &mut RomCaliptraSoC,
     data: impl ExactSizeIterator<Item = u32> + Clone,
 ) -> [u8; 48] {
     let mut offset = data.len().min(CHUNK_DWORDS);
@@ -79,7 +80,7 @@ pub fn cm_sha384(
 /// Send CM_SHA_INIT with the first data chunk and return the SHA context.
 #[inline(never)]
 fn cm_sha_init(
-    soc_manager: &mut CaliptraSoC,
+    soc_manager: &mut RomCaliptraSoC,
     chunk: impl ExactSizeIterator<Item = u32> + Clone,
 ) -> [u8; CMB_SHA_CONTEXT_SIZE] {
     let cmd: u32 = CommandId::CM_SHA_INIT.into();
@@ -130,7 +131,7 @@ fn cm_sha_init(
 /// Send CM_SHA_UPDATE for one middle chunk, updating the SHA context in place.
 #[inline(never)]
 fn cm_sha_update(
-    soc_manager: &mut CaliptraSoC,
+    soc_manager: &mut RomCaliptraSoC,
     chunk: impl ExactSizeIterator<Item = u32> + Clone,
     sha_context: &mut [u8; CMB_SHA_CONTEXT_SIZE],
 ) {
@@ -179,7 +180,7 @@ fn cm_sha_update(
 /// Send CM_SHA_FINAL with any remaining data and return the 48-byte digest.
 #[inline(never)]
 fn cm_sha_final(
-    soc_manager: &mut CaliptraSoC,
+    soc_manager: &mut RomCaliptraSoC,
     remaining: &[u32],
     sha_context: [u8; CMB_SHA_CONTEXT_SIZE],
 ) -> [u8; 48] {

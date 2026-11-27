@@ -10,13 +10,14 @@
 //! manifest SVN is not exposed by `FW_INFO`, so the header's
 //! self-attested value (validated as `>= min_svn`) is the only guard.
 
+use crate::RomCaliptraSoC;
 use crate::{fatal_error, RomEnv};
 use caliptra_api::mailbox::{CommandId, FwInfoResp, MailboxReqHeader};
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_registers_generated::fuses::{
     FuseEntryInfo, OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_SOC_MANIFEST_SVN,
 };
-use caliptra_mcu_romtime::{CaliptraSoC, McuComponentSvnManifest, Otp};
+use caliptra_mcu_romtime::{McuComponentSvnManifest, Otp};
 use core::fmt::Write;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -69,7 +70,7 @@ fn burn_fatal() -> ! {
     fatal_error(McuError::ROM_CALIPTRA_RUNTIME_SVN_BURN_ERROR);
 }
 
-fn query_fw_svn(soc_manager: &mut CaliptraSoC) -> u32 {
+fn query_fw_svn(soc_manager: &mut RomCaliptraSoC) -> u32 {
     // Safety: `MailboxReqHeader` is `repr(C)` with size 4; transmuting
     // an all-zero header to `[u32; 1]` is sound.
     let mut req_u32: [u32; core::mem::size_of::<MailboxReqHeader>() / 4] =

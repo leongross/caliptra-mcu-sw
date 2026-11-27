@@ -2,7 +2,8 @@
 
 //! This provides the Caliptra capsule that handles syscalls for reading registers.
 
-use caliptra_mcu_romtime::CaliptraSoC;
+use caliptra_api::SocManager;
+use caliptra_mcu_romtime::SocManagerMailbox;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::TakeCell;
@@ -32,18 +33,18 @@ pub struct App {
     pub reg_index: u32,
 }
 
-pub struct Caliptra {
+pub struct Caliptra<S: SocManager + 'static> {
     // The underlying Caliptra API SoC interface
-    driver: TakeCell<'static, CaliptraSoC>,
+    driver: TakeCell<'static, S>,
     // Per-app state.
     apps: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
 }
 
-impl Caliptra {
+impl<S: SocManager + 'static> Caliptra<S> {
     pub fn new(
         grant: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
-        driver: &'static mut CaliptraSoC,
-    ) -> Caliptra {
+        driver: &'static mut S,
+    ) -> Caliptra<S> {
         Caliptra {
             driver: TakeCell::new(driver),
             apps: grant,
@@ -84,7 +85,7 @@ impl Caliptra {
     }
 }
 
-impl SyscallDriver for Caliptra {
+impl<S: SocManager + 'static> SyscallDriver for Caliptra<S> {
     fn command(
         &self,
         caliptra_cmd: usize,
